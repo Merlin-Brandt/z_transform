@@ -1,0 +1,43 @@
+No variant of 'external_declaration' matched.
+candidates: 1
+  No variant of 'external_declaration_v' matched.
+  candidates: 2
+    No variant of 'external_declaration_v_t' matched.
+    candidates: 1
+      No variant of 'function_definition' matched.
+      candidates: 1
+        No variant of 'function_definition_v' matched.
+        candidates: 1
+          No variant of 'function_definition_v_ssss' matched.
+          candidates: 1
+            No variant of 'compound_statement' matched.
+            candidates: 1
+              No variant of 'compound_statement_v' matched.
+              candidates: 1
+                No variant of 'compound_statement_v_s' matched.
+                candidates: 1
+                  Expected '{', got '= 0;'
+
+
+
+
+
+
+
+    No variant of 'external_declaration_v_tt' matched.
+    candidates: 1
+      No variant of 'declaration' matched.
+      candidates: 1
+        No variant of 'declaration_v' matched.
+        candidates: 1
+          No variant of 'declaration_v_sss' matched.
+          candidates: 1
+            Expected ';', got '= 0;'
+
+
+
+
+
+
+ at %: {::external_declaration} on 'static int main_pause = 0;'
+Error: ()

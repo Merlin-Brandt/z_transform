@@ -1,0 +1,178 @@
+//%: {::m5_load(init.m5)}
+
+#include <emscripten.h>
+#include <emscripten/html5.h>
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <GLES3/gl3.h>
+
+typedef struct {
+    int _unused;
+} data_t;
+
+typedef struct {
+    GLuint vbo, vao;
+} gobject_t;
+
+bool background_is_black = true;
+
+GLuint compile(char const *vertexSource, char const *fragmentSource);
+void main_loop(data_t *data);
+
+int main()
+{
+    EmscriptenWebGLContextAttributes attr;
+    emscripten_webgl_init_context_attributes(&attr);
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context("canvas", &attr);
+    emscripten_webgl_make_context_current(ctx);
+    emscripten_set_canvas_element_size("canvas", 640, 640);
+    {
+        const GLubyte* renderer = glGetString(GL_RENDERER);
+        const GLubyte* version = glGetString(GL_VERSION);
+        printf("Renderer: %s\n", renderer);
+        printf("OpenGL version: %s\n", version);    
+    }
+
+	GLuint shaderProgram = compile(
+        "%: {::shader(
+            #version 300 es
+            layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec3 aColor;
+            layout (location = 2) in vec2 aTexCoord;
+
+            out vec3 ourColor;
+            out vec2 TexCoord;
+
+            void main()
+            {
+                gl_Position = vec4(aPos, 1.0);
+                ourColor = aColor;
+                TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+            }
+        )}",
+        "%: {::shader(
+            #version 300 es
+            precision mediump float;
+            out vec4 FragColor;
+
+            in vec3 ourColor;
+            in vec2 TexCoord;
+
+            // texture sampler
+            uniform sampler2D texture1;
+
+            void main()
+            {
+                FragColor = texture(texture1, TexCoord);//vec4(ourColor, 1.0f);//
+            }
+        )}"
+    );
+
+    "%: {::opengl_meta} {
+        var m5obj = object(
+            place(1.0,  1.0, 0.0  ), color( 1.0, 0.0, 0.0),  texture(.33, 1.0),
+            place(1.0, -1.0, 0.0  ), color( 0.0, 1.0, 0.0),  texture(.33, 0.0), 
+            place(-1.0,  1.0, 0.0 ), color(  1.0, 1.0, 0.0), texture(  0.0, 1.0),
+            place(1.0, -1.0, 0.0  ), color( 0.0, 1.0, 0.0),  texture(.33, 0.0), 
+            place(-1.0, -1.0, 0.0 ), color(  0.0, 0.0, 1.0), texture(  0.0, 0.0),
+            place(-1.0,  1.0, 0.0 ), color(  1.0, 1.0, 0.0), texture(  0.0, 1.0 ),
+        )
+    }";
+
+    GLuint texture;
+    int w, h;
+    char *img_data = emscripten_get_preloaded_image_data("texture.png", &w, &h);
+    glGenTextures(1, &texture);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    free(img_data);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glUniform1i(glGetUniformLocation(shaderProgram, "texture1"), 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    data_t data;
+    //data.window = window;
+    emscripten_set_main_loop_arg(main_loop, &data, 0, true);
+
+    return EXIT_SUCCESS;
+}
+
+void main_loop(data_t *data) 
+{
+    // Clear the screen
+    if( background_is_black )
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    else
+        glClearColor(0.9f, 0.9f, 0.9f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Draw a triangle from the 3 vertices
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    //SDL_GL_SwapWindow(data->window);
+}
+
+__attribute__((used)) 
+void toggle_background_color() { background_is_black = !background_is_black; }
+
+GLuint compile(char const *vertexSource, char const *fragmentSource)
+{
+    int status;
+	int logLength;
+
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexSource, 0);
+    glCompileShader(vertexShader);
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &status);
+    glGetShaderiv(vertexShader, GL_INFO_LOG_LENGTH, &logLength);
+    if (!status && logLength)
+    {
+        char log[logLength];
+        glGetShaderInfoLog(vertexShader, logLength, 0, log);
+        fprintf(stderr, "GLL: ERROR: Failed to compile vertex shader: %s\n", log);
+        exit(EXIT_FAILURE);
+    }
+
+    // Create and compile the fragment shader
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentSource, 0);
+    glCompileShader(fragmentShader);
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &status);
+    glGetShaderiv(fragmentShader, GL_INFO_LOG_LENGTH, &logLength);
+    if (!status && logLength)
+    {
+        char log[logLength];
+        glGetShaderInfoLog(fragmentShader, logLength, 0, log);
+        fprintf(stderr, "GLL: ERROR: Failed to compile fragment shader: %s\n", log);
+        exit(EXIT_FAILURE);
+    }
+
+    // Link the vertex and fragment shader into a shader program
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &status);
+    glGetProgramiv(shaderProgram, GL_INFO_LOG_LENGTH, &logLength);
+    if (!status && logLength)
+    {
+        char log[logLength];
+        glGetProgramInfoLog(shaderProgram, logLength, 0, log);
+        fprintf(stderr, "GLL: ERROR: Failed to link shaders: %s\n", log);
+        exit(EXIT_FAILURE);
+    }
+
+    glUseProgram(shaderProgram);
+    return shaderProgram;
+}

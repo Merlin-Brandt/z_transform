@@ -1,0 +1,371 @@
+
+
+
+   
+
+
+              
+        
+
+   
+
+
+        
+            
+    
+    
+        
+            
+    
+                                        
+               
+               
+
+               
+               
+
+      
+                  
+   
+
+                                   
+               
+               
+
+               
+               
+
+      
+                  
+   
+
+                                   
+               
+               
+
+               
+               
+
+      
+                  
+   
+
+                        
+                                             
+
+         
+
+
+   
+
+
+              
+        
+
+   
+
+
+        
+            
+    
+    
+        
+            
+    
+                                        
+               
+               
+
+               
+               
+
+      
+                  
+   
+
+                                   
+               
+               
+
+               
+               
+
+      
+                  
+   
+
+                                   
+               
+               
+
+               
+               
+
+      
+                  
+   
+
+                        
+                                             
+
+         
+
+    #include <linux/delay.h>
+#include <linux/device.h>
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/mod_devicetable.h>
+#include <linux/slab.h>
+#include <linux/soundwire/sdw_registers.h>
+#include <linux/soundwire/sdw.h>
+#include <sound/soc.h>
+#include "bus.h"
+
+
+int sdw_rows[SDW_FRAME_ROWS] = {48, 50, 60, 64, 75, 80, 125, 147,
+			96, 100, 120, 128, 150, 160, 250, 0,
+			192, 200, 240, 256, 72, 144, 90, 180};
+EXPORT_SYMBOL(sdw_rows);
+
+int sdw_cols[SDW_FRAME_COLS] = {2, 4, 6, 8, 10, 12, 14, 16};
+EXPORT_SYMBOL(sdw_cols);
+
+int sdw_find_col_index(int col)
+{
+	int i;
+
+	for (i = 0; i < SDW_FRAME_COLS; i++) {
+		if (sdw_cols[i] == col)
+			return i;
+	}
+
+	pr_warn("Requested column not found, selecting lowest column no: 2\n");
+	return 0;
+}
+EXPORT_SYMBOL(sdw_find_col_index);
+
+int sdw_find_row_index(int row)
+{
+	int i;
+
+	for (i = 0; i < SDW_FRAME_ROWS; i++) {
+		if (sdw_rows[i] == row)
+			return i;
+	}
+
+	pr_warn("Requested row not found, selecting lowest row no: 48\n");
+	return 0;
+}
+EXPORT_SYMBOL(sdw_find_row_index);
+
+static int _sdw_program_slave_port_params(struct sdw_bus *bus,
+					  struct sdw_slave *slave,
+					  struct sdw_transport_params *t_params,
+					  enum sdw_dpn_type type)
+{
+	u32 addr1, addr2, addr3, addr4;
+	int ret;
+	u16 wbuf;
+
+	if (bus->params.next_bank) {
+		addr1 = SDW_DPN_OFFSETCTRL2_B1(t_params->port_num);
+		addr2 = SDW_DPN_BLOCKCTRL3_B1(t_params->port_num);
+		addr3 = SDW_DPN_SAMPLECTRL2_B1(t_params->port_num);
+		addr4 = SDW_DPN_HCTRL_B1(t_params->port_num);
+	} else {
+		addr1 = SDW_DPN_OFFSETCTRL2_B0(t_params->port_num);
+		addr2 = SDW_DPN_BLOCKCTRL3_B0(t_params->port_num);
+		addr3 = SDW_DPN_SAMPLECTRL2_B0(t_params->port_num);
+		addr4 = SDW_DPN_HCTRL_B0(t_params->port_num);
+	}
+
+	
+	ret = sdw_write(slave, addr1, t_params->offset2);
+	if (ret < 0) {
+		dev_err(bus->dev, "DPN_OffsetCtrl2 register write failed\n");
+		return ret;
+	}
+
+	
+	ret = sdw_write(slave, addr2, t_params->blk_pkg_mode);
+	if (ret < 0) {
+		dev_err(bus->dev, "DPN_BlockCtrl3 register write failed\n");
+		return ret;
+	}
+
+	
+	if (type != SDW_DPN_FULL)
+		return ret;
+
+	
+	wbuf = FIELD_GET(SDW_DPN_SAMPLECTRL_HIGH, t_params->sample_interval - 1);
+
+	ret = sdw_write(slave, addr3, wbuf);
+	if (ret < 0) {
+		dev_err(bus->dev, "DPN_SampleCtrl2 register write failed\n");
+		return ret;
+	}
+
+	
+	wbuf = FIELD_PREP(SDW_DPN_HCTRL_HSTART, t_params->hstart);
+	wbuf |= FIELD_PREP(SDW_DPN_HCTRL_HSTOP, t_params->hstop);
+
+	ret = sdw_write(slave, addr4, wbuf);
+	if (ret < 0)
+		dev_err(bus->dev, "DPN_HCtrl register write failed\n");
+
+	return ret;
+}
+
+static int sdw_program_slave_port_params(struct sdw_bus *bus,
+					 struct sdw_slave_runtime *s_rt,
+					 struct sdw_port_runtime *p_rt)
+{
+	struct sdw_transport_params *t_params = &p_rt->transport_params;
+	struct sdw_port_params *p_params = &p_rt->port_params;
+	struct sdw_slave_prop *slave_prop = &s_rt->slave->prop;
+	u32 addr1, addr2, addr3, addr4, addr5, addr6;
+	struct sdw_dpn_prop *dpn_prop;
+	int ret;
+	u8 wbuf;
+
+	if (s_rt->slave->is_mockup_device)
+		return 0;
+
+	dpn_prop = sdw_get_slave_dpn_prop(s_rt->slave,
+					  s_rt->direction,
+					  t_params->port_num);
+	if (!dpn_prop)
+		return -EINVAL;
+
+	addr1 = SDW_DPN_PORTCTRL(t_params->port_num);
+	addr2 = SDW_DPN_BLOCKCTRL1(t_params->port_num);
+
+	if (bus->params.next_bank) {
+		addr3 = SDW_DPN_SAMPLECTRL1_B1(t_params->port_num);
+		addr4 = SDW_DPN_OFFSETCTRL1_B1(t_params->port_num);
+		addr5 = SDW_DPN_BLOCKCTRL2_B1(t_params->port_num);
+		addr6 = SDW_DPN_LANECTRL_B1(t_params->port_num);
+
+	} else {
+		addr3 = SDW_DPN_SAMPLECTRL1_B0(t_params->port_num);
+		addr4 = SDW_DPN_OFFSETCTRL1_B0(t_params->port_num);
+		addr5 = SDW_DPN_BLOCKCTRL2_B0(t_params->port_num);
+		addr6 = SDW_DPN_LANECTRL_B0(t_params->port_num);
+	}
+
+	
+	wbuf = FIELD_PREP(SDW_DPN_PORTCTRL_DATAMODE, p_params->data_mode);
+	wbuf |= FIELD_PREP(SDW_DPN_PORTCTRL_FLOWMODE, p_params->flow_mode);
+
+	ret = sdw_update(s_rt->slave, addr1, 0xF, wbuf);
+	if (ret < 0) {
+		dev_err(&s_rt->slave->dev,
+			"DPN_PortCtrl register write failed for port %d\n",
+			t_params->port_num);
+		return ret;
+	}
+
+	if (!dpn_prop->read_only_wordlength) {
+		
+		ret = sdw_write(s_rt->slave, addr2, (p_params->bps - 1));
+		if (ret < 0) {
+			dev_err(&s_rt->slave->dev,
+				"DPN_BlockCtrl1 register write failed for port %d\n",
+				t_params->port_num);
+			return ret;
+		}
+	}
+
+	
+	wbuf = (t_params->sample_interval - 1) & SDW_DPN_SAMPLECTRL_LOW;
+	ret = sdw_write(s_rt->slave, addr3, wbuf);
+	if (ret < 0) {
+		dev_err(&s_rt->slave->dev,
+			"DPN_SampleCtrl1 register write failed for port %d\n",
+			t_params->port_num);
+		return ret;
+	}
+
+	
+	ret = sdw_write(s_rt->slave, addr4, t_params->offset1);
+	if (ret < 0) {
+		dev_err(&s_rt->slave->dev,
+			"DPN_OffsetCtrl1 register write failed for port %d\n",
+			t_params->port_num);
+		return ret;
+	}
+
+	
+	if (t_params->blk_grp_ctrl_valid) {
+		ret = sdw_write(s_rt->slave, addr5, t_params->blk_grp_ctrl);
+		if (ret < 0) {
+			dev_err(&s_rt->slave->dev,
+				"DPN_BlockCtrl2 reg write failed for port %d\n",
+				t_params->port_num);
+			return ret;
+		}
+	}
+
+	
+	if (slave_prop->lane_control_support) {
+		ret = sdw_write(s_rt->slave, addr6, t_params->lane_ctrl);
+		if (ret < 0) {
+			dev_err(&s_rt->slave->dev,
+				"DPN_LaneCtrl register write failed for port %d\n",
+				t_params->port_num);
+			return ret;
+		}
+	}
+
+	if (dpn_prop->type != SDW_DPN_SIMPLE) {
+		ret = _sdw_program_slave_port_params(bus, s_rt->slave,
+						     t_params, dpn_prop->type);
+		if (ret < 0)
+			dev_err(&s_rt->slave->dev,
+				"Transport reg write failed for port: %d\n",
+				t_params->port_num);
+	}
+
+	return ret;
+}
+
+static int sdw_program_master_port_params(struct sdw_bus *bus,
+					  struct sdw_port_runtime *p_rt)
+{
+	int ret;
+
+	
+	ret = bus->port_ops->dpn_set_port_transport_params(bus,
+					&p_rt->transport_params,
+					bus->params.next_bank);
+	if (ret < 0)
+		return ret;
+
+	return bus->port_ops->dpn_set_port_params(bus,
+						  &p_rt->port_params,
+						  bus->params.next_bank);
+}
+
+
+-"end of parsed text."-No variant of 'function_definition' matched.
+candidates: 1
+  No variant of 'function_definition_v' matched.
+  candidates: 1
+    No variant of 'function_definition_v_ssss' matched.
+    candidates: 1
+      No variant of 'compound_statement' matched.
+      candidates: 1
+        No variant of 'compound_statement_v' matched.
+        candidates: 1
+          No variant of 'compound_statement_v_sss' matched.
+          candidates: 1
+            Expected '}', got 'list_for_each_entry(s_rt, &m_rt->slave_rt_list, m_rt_node) {'
+
+
+
+
+
+
+ at %: {::function_definition} on 'static int sdw_progr'
+Error: ()

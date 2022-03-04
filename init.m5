@@ -1,0 +1,78 @@
+%: cwd -> {.//lib//m5//}
+%: {::m5_load(::cwd//init.m5)}
+%: {::m5_load(::cwd//metatime.m5)}
+%: {::m5_load(::cwd//experimental//c.m5)}
+
+%::shader_rest {}
+%: shader_rest {::shader_rest__remove_last_quote}
+%: shader_rest {:nl:newline:r:shader_rest} -> {\n\:nl'`:r}
+%: shader_rest {::shader_not::anychar::shader_rest}
+
+%::shader_not {::shader_not_newline::shader_not_quote::shader_not_comment}
+%::shader_not_newline (not) {::newline}
+%::shader_not_quote (not) {"}
+%::shader_not_comment (not) {*/}
+
+%: shader_rest__remove_last_quote {::eof} -> {}
+
+%: shader(::nwh:r:shader_rest) -> {:r}
+
+
+%: {::define_whitespace_handler('replace with ::nwh`)}    //'
+
+%: vertex_data {
+    place ( :x:float , :y:float , :z:float ) , ::nwh
+    color ( :r:float , :g:float , :b:float ) , ::nwh
+    texture ( :u:float , :v:float )
+} -> {
+    :x, :y, :z, :r, :g, :b, :u, :v
+}
+
+%: meta! {
+    type vertex_data_list = list of { ::vertex_data }.
+}
+
+%: maybe_quote {}
+%: maybe_quote {" ;}
+
+%: opengl_meta { { ::nwh
+    :r:meta_opengl_cmds ::nwh
+} :mq:maybe_quote } -> {
+    :mq :r
+}
+
+%: meta_opengl_cmds {}
+%: meta_opengl_cmds {::meta_opengl_cmd::nwh::meta_opengl_cmds}
+
+%: meta_opengl_cmd {
+    var' ` :name:alnum_s = object ( :vertex_data:vertex_data_list )
+} -> {
+    gobject_t :name;
+
+    // Create a Vertex Buffer Object and copy the vertex data to it
+    glGenBuffers(1, &:name.vbo);
+
+    // format: XYZRGBUV
+    {
+        GLfloat vertices[] = {:vertex_data};
+
+        glBindBuffer(GL_ARRAY_BUFFER, :name.vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    }
+
+    glGenVertexArrays(1, &:name.vao);
+    glBindVertexArray(:name.vao);
+
+    // position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    // color attribute
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    // texture coord attribute
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+}
+
+%: {::remove_c_comments}
+%: {::translation_unit}
