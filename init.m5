@@ -1,7 +1,9 @@
-%: cwd -> {.//lib//m5//}
-%: {::m5_load(::cwd//init.m5)}
-%: {::m5_load(::cwd//metatime.m5)}
-%: {::m5_load(::cwd//experimental//c.m5)}
+E0
+%: {::m5_load(m5/init.m5.0.2)}
+E1
+%: {::m5_load(m5/metatime.m5)}
+//%/: {::m5_load(m5/experimental//c.m5)}
+E2
 
 %::shader_rest {}
 %: shader_rest {::shader_rest__remove_last_quote}
@@ -16,16 +18,25 @@
 %: shader_rest__remove_last_quote {::eof} -> {}
 
 %: shader(::nwh:r:shader_rest) -> {:r}
-
+D1
 
 %: {::define_whitespace_handler('replace with ::nwh`)}    //'
 
+%: vertex_place {:tuple:alnum_s} -> {:tuple.x, :tuple.y, :typle.z}
+%: vertex_place {place ( :x:float , :y:float , :z:float )} -> {:x, :y, :z}
+
+%: vertex_color {:tuple:alnum_s} -> {:tuple.r, :tuple.g, :typle.b}
+%: vertex_color {color ( :x:float , :y:float , :z:float )} -> {:x, :y, :z}
+
+%: vertex_texcoords {:tuple:alnum_s} -> {:tuple.u, :tuple.v}
+%: vertex_texcoords {texcoords ( :x:float , :y:float )} -> {:x, :y}
+
 %: vertex_data {
-    place ( :x:float , :y:float , :z:float ) , ::nwh
-    color ( :r:float , :g:float , :b:float ) , ::nwh
-    texture ( :u:float , :v:float )
+    :xyz:vertex_place, ::nwh
+    :rgb:vertex_color , ::nwh
+    :uv:vertex_texcoords
 } -> {
-    :x, :y, :z, :r, :g, :b, :u, :v
+    :xyz, :rgb, :uv
 }
 
 %: meta! {
@@ -41,8 +52,10 @@
     :mq :r
 }
 
+D2
+
 %: meta_opengl_cmds {}
-%: meta_opengl_cmds {::meta_opengl_cmd::nwh::meta_opengl_cmds}
+%: meta_opengl_cmds {::meta_opengl_cmd ::meta_opengl_cmds}
 
 %: meta_opengl_cmd {
     var' ` :name:alnum_s = object ( :vertex_data:vertex_data_list )
@@ -74,5 +87,7 @@
     glEnableVertexAttribArray(2);
 }
 
-%: {::remove_c_comments}
-%: {::translation_unit}
+D3
+
+//%/: {::remove_c_comments}
+//%/: {::translation_unit}
