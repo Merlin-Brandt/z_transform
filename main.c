@@ -166,7 +166,7 @@ void main_loop(void *rawdata)
                 // each point corresponds to one sample
                 // each sample at splitpoint is advanced by objpointcount
 
-                int SAMPLERATE = 64;
+                int SAMPLERATE = 1024;
                 int splitpoint = ((int)(seconds() * SAMPLERATE)) % objpointcount;
 
                 int localsampleoffset = point;
@@ -183,7 +183,7 @@ void main_loop(void *rawdata)
                 //float INPUTSIGNAL = (samplei % 3) / 3.f
                 ;
 
-                xy z; ZPHASE       = (M_2PI) * (seconds()); 
+                xy z; ZPHASE       = (M_2PI) * (seconds() + 1000); 
                       ZPHASE_DENOM = objpointcount*128*5;
                 z.x = cos(ZPHASE*samplei/ZPHASE_DENOM)*radius;
                 z.y = sin(ZPHASE*samplei/ZPHASE_DENOM)*radius;

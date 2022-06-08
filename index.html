@@ -36,7 +36,7 @@
     canvas: document.getElementById("canvas"),
     onRuntimeInitialized: function() {
 		 function renderZPHASE() {
-			$('#label')[0].innerHTML = "z-transform of first three harmonics with z = re<sup>i" + _getZPHASE() + "</sup>";
+			$('#label')[0].innerHTML = "z-transform of first three harmonics with z = e<sup>i" + _getZPHASE() + "</sup>";
 			window.requestAnimationFrame(renderZPHASE);
 		 }
 	   	 window.requestAnimationFrame(renderZPHASE);
