@@ -6,4 +6,4 @@ While **z** rotates along the unit circle over time, the complex summands of the
 
 $$\mathcal{Z}\{x[n]\}=\sum_{n=0}^{\infty} x[n]\cdot z^{-n}$$
 
-</style>
+</span>
