@@ -1,5 +1,5 @@
 [merlin-brandt.github.io/z_transform/](https://merlin-brandt.github.io/z_transform/)
 
-While the sample-rate of a wave with second and third harmonics decreases with time, the complex summands of its Z-Transform are continually visualized resulting in interesting flower-patterns. Intended as an educational tool for understanding-seeing the mathematical intrinsics of the well-known formula: 
+While **z** rotates along the unit circle, the complex summands of the Z-Transform of the first three harmonics are continually visualized as blue dots on black background, resulting in interesting flower-patterns revealing the intrinsics of
 
 $$\mathcal{Z}\{x[n]\}=\sum_{n=0}^{\infty} x[n]\cdot z^{-n}$$
